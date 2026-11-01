@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from typing import Any, TypedDict
 
-from hydropinpoint.config import LLM_API_KEY, LLM_MODEL, MAX_VALIDATOR_ATTEMPTS
+from hydropinpoint.config import GEMINI_API_KEY, GEMINI_MODEL, MAX_VALIDATOR_ATTEMPTS
 from hydropinpoint.contracts import ToolResult
 from hydropinpoint.tools.facilities import facilities
 from hydropinpoint.tools.hotspots import hotspots
@@ -94,8 +94,8 @@ def reasoner(state: AgentState) -> AgentState:
     context = [result.model_dump(mode="json") for result in usable]
     if not usable:
         draft = "Data unavailable. " + "; ".join(state.get("issues", []))
-    elif LLM_API_KEY:
-        from openai import OpenAI
+    elif GEMINI_API_KEY:
+        from google import genai
 
         prompt = (
             "You are HydroPinpoint, a screening assistant, not a flood predictor. "
@@ -104,9 +104,9 @@ def reasoner(state: AgentState) -> AgentState:
             "unknown existing capacity.\nQuestion: " + state["question"] + "\nTool outputs: "
             + json.dumps(context, ensure_ascii=False)
         )
-        draft = OpenAI(api_key=LLM_API_KEY).responses.create(
-            model=LLM_MODEL, input=prompt, max_output_tokens=600
-        ).output_text
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        response = client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
+        draft = response.text or "Gemini returned no text response."
     else:
         sources = "; ".join(
             f"{result.source} (fetched {result.fetched_at.isoformat()})" for result in usable
