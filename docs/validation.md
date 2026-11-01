@@ -25,7 +25,12 @@ corridors in East Bengaluru (especially Sarjapur Road, Outer Ring Road, and Bell
 
 - Archive rainfall: Open-Meteo ERA5, 5 Sept 2022, label `"HISTORICAL REPLAY"`.
 - Hotspot detection: static terrain + WorldCover analysis via `compute_terrain`.
-- Hit definition: a reference locality is considered a "hit" if its coordinates fall within 500 metres of a top-ranked hotspot centroid or inside its delineated catchment.
+- Event ranking: peak historical runoff first, with static susceptibility as the
+  tie-breaker. This ensures the archived rainfall affects the replay ranking.
+- Hybrid safeguard: retain the highest static terrain candidate alongside the ten
+  event-runoff leaders because the ~25 km ERA5 grid smooths localized rainfall.
+- Hit definition: a reference locality is considered a "hit" if its approximate press-report
+  coordinate falls within 750 metres of a top-ranked hotspot centroid.
 - Baseline comparison: 1,000 trials of randomly placed points within the bounding box to calculate the expected background hit-rate by pure chance.
 
 ## Caveats

@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 import random
 
-from hydropinpoint.contracts import BoundingBox
+from hydropinpoint.contracts import BoundingBox, Hotspot
 from hydropinpoint.engine.hydrology import compute_runoff, compute_terrain
 from hydropinpoint.fetch.rainfall import fetch_archive
 
@@ -29,6 +29,9 @@ HISTORICAL_LOCALITIES = [
 DEMO_BOX = BoundingBox(west=77.60, south=12.90, east=77.75, north=13.02)
 HIT_RADIUS_M = 750.0  # metres
 N_RANDOM_TRIALS = 1000
+REPLAY_EVENT_TOP_K = 10
+REPLAY_STATIC_SENTINELS = 1
+RANDOM_SEED = 20220905
 
 
 def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -41,6 +44,37 @@ def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     )
     c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
     return 6371000.0 * c
+
+
+def rank_for_event(hotspots: list[Hotspot]) -> list[Hotspot]:
+    """Rank replay candidates by event runoff, then static susceptibility."""
+    return sorted(
+        hotspots,
+        key=lambda hotspot: (
+            max(hotspot.hourly_Q_m3s, default=0.0),
+            hotspot.susceptibility_score,
+        ),
+        reverse=True,
+    )
+
+
+def select_replay_hotspots(hotspots: list[Hotspot]) -> list[Hotspot]:
+    """Combine event-runoff leaders with a static terrain sentinel.
+
+    ERA5 rainfall is coarse, so retaining the strongest static terrain candidate
+    prevents one smoothed rainfall cell from completely controlling the replay.
+    """
+    selected = rank_for_event(hotspots)[:REPLAY_EVENT_TOP_K]
+    selected_ids = {hotspot.id for hotspot in selected}
+    static_ranked = sorted(hotspots, key=lambda hotspot: hotspot.susceptibility_rank)
+    for hotspot in static_ranked:
+        if hotspot.id in selected_ids:
+            continue
+        selected.append(hotspot)
+        selected_ids.add(hotspot.id)
+        if len(selected) >= REPLAY_EVENT_TOP_K + REPLAY_STATIC_SENTINELS:
+            break
+    return selected
 
 
 def main() -> None:
@@ -58,7 +92,6 @@ def main() -> None:
     except Exception as exc:
         print(f"[Notice] Offline / dry simulation fallback: {exc}")
         # Synthetic hotspots if offline
-        from hydropinpoint.contracts import Hotspot
         hotspots = [
             Hotspot(
                 id=1, lat=12.9260, lon=77.6830, catchment_area_km2=0.45,
@@ -78,8 +111,11 @@ def main() -> None:
         ]
 
     hotspots = compute_runoff(hotspots, rain)
-    top_k = hotspots[:10]
-    print(f"Screened {len(hotspots)} micro-catchments. Checking top {len(top_k)} hotspots...")
+    top_k = select_replay_hotspots(hotspots)
+    print(
+        f"Screened {len(hotspots)} micro-catchments. Checking {len(top_k)} hybrid "
+        "hotspots (peak event runoff plus static terrain sentinel)..."
+    )
 
     # Filter reference points that fall inside DEMO_BOX
     active_localities = [
@@ -115,12 +151,13 @@ def main() -> None:
 
     # Monte Carlo random baseline
     print(f"\nSimulating {N_RANDOM_TRIALS} Monte Carlo random trials across DEMO_BOX...")
+    rng = random.Random(RANDOM_SEED)
     random_hit_counts = []
     for _ in range(N_RANDOM_TRIALS):
         trial_hits = 0
         for _ in range(n_localities):
-            rand_lat = random.uniform(DEMO_BOX.south, DEMO_BOX.north)
-            rand_lon = random.uniform(DEMO_BOX.west, DEMO_BOX.east)
+            rand_lat = rng.uniform(DEMO_BOX.south, DEMO_BOX.north)
+            rand_lon = rng.uniform(DEMO_BOX.west, DEMO_BOX.east)
             for h in top_k:
                 if haversine_m(rand_lat, rand_lon, h.lat, h.lon) <= HIT_RADIUS_M:
                     trial_hits += 1
