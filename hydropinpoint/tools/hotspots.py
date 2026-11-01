@@ -13,7 +13,10 @@ def hotspots(box: BoundingBox = DEFAULT_BOX, top: int | None = None) -> ToolResu
         result = run(box)
     except IntegrationUnavailableError as exc:
         return ToolResult(
-            value=None, source="HydroPinpoint pipeline", fetched_at=datetime.now(UTC), error=str(exc)
+            value=None,
+            source="HydroPinpoint pipeline",
+            fetched_at=datetime.now(UTC),
+            error=str(exc),
         )
     ranked = sorted(result.hotspots, key=lambda row: row.susceptibility_rank)
     if top is not None:

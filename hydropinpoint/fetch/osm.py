@@ -37,7 +37,13 @@ def _metres(value: Any) -> float | None:
         return None
     number = float(match.group(1))
     unit = match.group(2) or "m"
-    return number / 1000 if unit == "mm" else number / 100 if unit == "cm" else number * 0.3048 if unit in {"ft", "feet", "'"} else number
+    if unit == "mm":
+        return number / 1000
+    if unit == "cm":
+        return number / 100
+    if unit in {"ft", "feet", "'"}:
+        return number * 0.3048
+    return number
 
 
 def _normalise(elements: list[dict[str, Any]]) -> list[dict[str, Any]]:

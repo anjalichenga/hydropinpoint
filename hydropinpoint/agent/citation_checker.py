@@ -33,7 +33,11 @@ def check_numbers(answer: str, results: list[ToolResult]) -> tuple[str, list[dic
     unsupported: set[str] = set()
     for token in NUMBER.findall(answer):
         number = float(token)
-        matches = [source for candidate, source in sources if math.isclose(number, candidate, rel_tol=1e-6, abs_tol=1e-9)]
+        matches = [
+            source
+            for candidate, source in sources
+            if math.isclose(number, candidate, rel_tol=1e-6, abs_tol=1e-9)
+        ]
         table.append({"number": token, "source": matches[0] if matches else None})
         if not matches:
             unsupported.add(token)

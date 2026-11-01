@@ -113,7 +113,8 @@ def reasoner(state: AgentState) -> AgentState:
         )
         draft = (
             "The requested screening data is available. Review the structured result in the UI. "
-            f"Sources: {sources}. Existing drain capacity remains unknown unless a mapped size is shown."
+            f"Sources: {sources}. Existing drain capacity remains unknown unless a mapped "
+            "size is shown."
         )
     return {**state, "draft": draft, "status": "reasoned"}
 

@@ -11,6 +11,11 @@ Blocks:
     UI         – B's Streamlit settings
 """
 
+import os
+from pathlib import Path
+
+from hydropinpoint.contracts import BoundingBox
+
 # --- HYDROLOGY ---
 # Runoff coefficients C by WorldCover class.
 # Source: Chow, Maidment & Mays "Applied Hydrology" Table 5.2.1 (1988).
@@ -98,9 +103,6 @@ UI_DEFAULT_BOX: dict = {
 
 # --- PERSON B RUNTIME ---
 # Isolated aliases and source settings owned by Person B.
-import os
-from pathlib import Path
-from hydropinpoint.contracts import BoundingBox
 
 MANNING_N = MANNING_N_PIPE
 MIN_PIPE_SLOPE = SLOPE_FLOOR_M_PER_M
