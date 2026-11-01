@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.whl
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Environment variables / secrets
+.env
+*.env.local
+
+# Cache (real fetched data, git-ignored per project rules)
+.cache/
+
+# Scratch (throwaway scripts, git-ignored)
+scratch/
+
+# Raster / geospatial data
+*.tif
+*.tiff
+*.geotiff
+*.zip
+*.nc
+*.hdf5
+*.h5
+
+# Notebook outputs
+.ipynb_checkpoints/
+*.ipynb
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Coverage
+.coverage
+htmlcov/

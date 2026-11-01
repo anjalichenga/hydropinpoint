@@ -1,0 +1,29 @@
+line-length = 100
+
+[lint]
+# Project-wide rules. Rules suppressed here are documented below.
+select = ["E", "F", "W", "I", "UP", "B", "C4", "RUF"]
+
+ignore = [
+    # BLE001: check_contracts.py intentionally catches broad Exception to collect
+    # all errors without crashing the diagnostic runner.
+    "BLE001",
+    # B017: test_contracts.py uses pytest.raises(Exception) intentionally because
+    # we test that Pydantic rejects an invalid Literal; the exact exception type
+    # (ValidationError) is an implementation detail we don't want to couple to.
+    "B017",
+    # C408: dict() calls with keyword args are more readable than literals for
+    # the make_hotspot factory; unsafe fix rejected.
+    "C408",
+    # RUF001/RUF002/RUF003: en-dashes and special chars in docstrings/comments are
+    # intentional typographic choices in the shared contract and module headers.
+    "RUF001",
+    "RUF002",
+    "RUF003",
+]
+
+[lint.per-file-ignores]
+# Stub modules import contracts symbols for documentation purposes only.
+"hydropinpoint/fetch/*.py" = ["F401"]
+"hydropinpoint/engine/*.py" = ["F401"]
+"hydropinpoint/replay/*.py" = ["F401"]
