@@ -120,7 +120,13 @@ def reasoner(state: AgentState) -> AgentState:
             "or invent values. Cite the source and fetched_at timestamp beside each numeric "
             "claim. Never claim surcharge or a capacity ratio. Clearly label scenarios and "
             "state that existing capacity is unknown when no mapped size is present. "
-            "Use plain text, not JSON.\nQuestion: " + state["question"] + "\nTool outputs: "
+            "Start with a one-sentence takeaway. When comparing multiple records, use one "
+            "compact Markdown table with short human-readable headings and units in the "
+            "headings. Sort hotspots by susceptibility rank (highest priority first), routes "
+            "by distance, and other rows by relevance. Show at most 8 rows and put details "
+            "after the table. Do not output JSON.\nQuestion: "
+            + state["question"]
+            + "\nTool outputs: "
             + json.dumps(context, ensure_ascii=False)
         )
         client = genai.Client(api_key=GEMINI_API_KEY)

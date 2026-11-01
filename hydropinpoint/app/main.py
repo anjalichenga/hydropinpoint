@@ -25,6 +25,22 @@ def _load():
         return None
 
 
+def _citation_rows(citations: list[dict]) -> list[dict]:
+    rows: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    for citation in citations:
+        value = str(citation.get("number", ""))
+        source = citation.get("source")
+        if not value or not source:
+            continue
+        key = (value, str(source))
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append({"Value": value, "Verified source": str(source)})
+    return rows
+
+
 def _live_page() -> None:
     st.header("Live screening")
     st.caption("Screening only — not a flood prediction or surcharge model.")
@@ -81,8 +97,20 @@ def _ask_page() -> None:
             state = ask(question)
             st.write(f"Status: {state['status']}; validation attempts: {state['attempts']}")
         st.chat_message("assistant").write(state["answer"])
-        if state.get("citations"):
-            st.dataframe(state["citations"], use_container_width=True)
+        citation_rows = _citation_rows(state.get("citations", []))
+        if citation_rows:
+            with st.expander("Verified numeric sources"):
+                st.dataframe(
+                    citation_rows,
+                    hide_index=True,
+                    use_container_width=True,
+                    column_config={
+                        "Value": st.column_config.TextColumn("Value", width="small"),
+                        "Verified source": st.column_config.TextColumn(
+                            "Verified source", width="large"
+                        ),
+                    },
+                )
 
 
 def _replay_page() -> None:
