@@ -96,13 +96,12 @@ AGENT_TIMEOUT_S: int = 30
 UI_PAGE_TITLE: str = "HydroPinpoint"
 UI_MAP_TILES: str = "OpenStreetMap"
 UI_DEFAULT_BOX: dict = {
-    # Approximate 10 × 10 km window centred on eastern Bengaluru flood-reported area.
-    # ASSUMPTION: chosen from memory around 12.95 N, 77.65 E; must be verified
-    # against geocoded flood localities before finalising (see replay/).
-    "west": 77.60,
-    "south": 12.90,
-    "east": 77.70,
-    "north": 13.00,
+    # Approximate 38 x 39 km Bengaluru metropolitan screening window.
+    # Each edge can be overridden in .env without changing source code.
+    "west": float(os.getenv("HYDROPINPOINT_BOX_WEST", "77.45")),
+    "south": float(os.getenv("HYDROPINPOINT_BOX_SOUTH", "12.80")),
+    "east": float(os.getenv("HYDROPINPOINT_BOX_EAST", "77.80")),
+    "north": float(os.getenv("HYDROPINPOINT_BOX_NORTH", "13.15")),
 }
 
 # --- PERSON B RUNTIME ---

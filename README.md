@@ -1,6 +1,6 @@
 # HydroPinpoint
 
-A flood-hotspot screening tool for a ~10 × 10 km area of Bengaluru.
+A flood-hotspot screening tool for the wider Bengaluru metropolitan area.
 
 HydroPinpoint finds low-lying micro-catchments from an open elevation model, estimates
 the runoff each would receive from the live rainfall forecast, and estimates the drain

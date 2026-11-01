@@ -58,6 +58,9 @@ def _live_page() -> None:
         st.info("The current forecast is dry; required runoff-driven sizes are zero.")
     centre = [(result.box.south + result.box.north) / 2, (result.box.west + result.box.east) / 2]
     map_view = folium.Map(location=centre, zoom_start=12, tiles=UI_MAP_TILES)
+    map_view.fit_bounds(
+        [[result.box.south, result.box.west], [result.box.north, result.box.east]]
+    )
     sizing = {row.hotspot_id: row for row in result.sizings}
     for hotspot in result.hotspots:
         drain = sizing[hotspot.id]
