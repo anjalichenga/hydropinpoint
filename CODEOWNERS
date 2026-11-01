@@ -1,6 +1,5 @@
 # CODEOWNERS
 # Both team members must approve changes to shared files.
-# Replace @personB with partner's actual GitHub handle.
 
-hydropinpoint/contracts.py @anjalichenga @personB
-.github/ @anjalichenga @personB
+hydropinpoint/contracts.py @anjalichenga @pawan188
+.github/ @anjalichenga @pawan188
