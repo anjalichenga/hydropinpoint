@@ -7,7 +7,12 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from typing import Any, TypedDict
 
-from hydropinpoint.config import GEMINI_API_KEY, GEMINI_MODEL, MAX_VALIDATOR_ATTEMPTS
+from hydropinpoint.config import (
+    GEMINI_API_KEY,
+    GEMINI_FALLBACK_MODEL,
+    GEMINI_MODEL,
+    MAX_VALIDATOR_ATTEMPTS,
+)
 from hydropinpoint.contracts import ToolResult
 from hydropinpoint.tools.facilities import facilities
 from hydropinpoint.tools.hotspots import hotspots
@@ -89,6 +94,17 @@ def _retry_or_reason(state: AgentState) -> str:
     return "reason"
 
 
+def _source_based_answer(results: list[ToolResult]) -> str:
+    sources = "; ".join(
+        f"{result.source} (fetched {result.fetched_at.isoformat()})" for result in results
+    )
+    return (
+        "The requested screening data is available in the structured result. "
+        f"Sources: {sources}. Existing drain capacity remains unknown unless a mapped "
+        "size is shown."
+    )
+
+
 def reasoner(state: AgentState) -> AgentState:
     usable = [result for result in state["results"] if result.value is not None]
     context = [result.model_dump(mode="json") for result in usable]
@@ -99,23 +115,29 @@ def reasoner(state: AgentState) -> AgentState:
 
         prompt = (
             "You are HydroPinpoint, a screening assistant, not a flood predictor. "
-            "Answer only from the JSON tool outputs. Cite the source and timestamp for every "
-            "number. Never claim surcharge or a capacity ratio. Clearly label scenarios and "
-            "unknown existing capacity.\nQuestion: " + state["question"] + "\nTool outputs: "
+            "Answer the user's question directly and concisely using only the JSON tool "
+            "outputs. Copy numeric values exactly as supplied; do not calculate, estimate, "
+            "or invent values. Cite the source and fetched_at timestamp beside each numeric "
+            "claim. Never claim surcharge or a capacity ratio. Clearly label scenarios and "
+            "state that existing capacity is unknown when no mapped size is present. "
+            "Use plain text, not JSON.\nQuestion: " + state["question"] + "\nTool outputs: "
             + json.dumps(context, ensure_ascii=False)
         )
         client = genai.Client(api_key=GEMINI_API_KEY)
-        response = client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
-        draft = response.text or "Gemini returned no text response."
+        models = tuple(dict.fromkeys((GEMINI_MODEL, GEMINI_FALLBACK_MODEL)))
+        draft = ""
+        for model in models:
+            try:
+                response = client.models.generate_content(model=model, contents=prompt)
+                draft = response.text or ""
+            except Exception:
+                continue
+            if draft.strip():
+                break
+        if not draft.strip():
+            draft = _source_based_answer(usable)
     else:
-        sources = "; ".join(
-            f"{result.source} (fetched {result.fetched_at.isoformat()})" for result in usable
-        )
-        draft = (
-            "The requested screening data is available. Review the structured result in the UI. "
-            f"Sources: {sources}. Existing drain capacity remains unknown unless a mapped "
-            "size is shown."
-        )
+        draft = _source_based_answer(usable)
     return {**state, "draft": draft, "status": "reasoned"}
 
 
@@ -148,4 +170,3 @@ def build_graph():
 
 def ask(question: str) -> AgentState:
     return build_graph().invoke({"question": question, "attempts": 0, "status": "starting"})
-

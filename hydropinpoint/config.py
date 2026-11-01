@@ -116,6 +116,9 @@ HTTP_RETRIES = 3
 USER_AGENT = "HydroPinpoint/0.1 ({email})"
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini").lower()
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
+GEMINI_FALLBACK_MODEL = os.getenv(
+    "GEMINI_FALLBACK_MODEL", "gemini-2.5-flash-lite"
+)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 MAX_VALIDATOR_ATTEMPTS = AGENT_MAX_RETRIES
 DEFAULT_BOX = BoundingBox(**UI_DEFAULT_BOX)

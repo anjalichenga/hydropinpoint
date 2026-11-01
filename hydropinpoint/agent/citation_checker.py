@@ -16,6 +16,8 @@ def _numbers(value: Any) -> list[float]:
         return found
     if isinstance(value, (int, float)):
         return [float(value)]
+    if isinstance(value, str):
+        return [float(token) for token in NUMBER.findall(value)]
     if isinstance(value, dict):
         for child in value.values():
             found.extend(_numbers(child))
@@ -25,29 +27,37 @@ def _numbers(value: Any) -> list[float]:
     return found
 
 
+def _matches(token: str, number: float, candidate: float) -> bool:
+    if "." not in token:
+        tolerance = 1e-9
+    else:
+        decimal_places = len(token.rsplit(".", maxsplit=1)[1])
+        tolerance = 0.5 * (10 ** -decimal_places) + 1e-12
+    return math.isclose(number, candidate, rel_tol=1e-9, abs_tol=tolerance)
+
+
 def check_numbers(answer: str, results: list[ToolResult]) -> tuple[str, list[dict[str, Any]]]:
     sources: list[tuple[float, str]] = []
     for result in results:
-        sources.extend((number, result.source) for number in _numbers(result.value))
+        payload = result.model_dump(mode="json")
+        sources.extend((number, result.source) for number in _numbers(payload))
     table: list[dict[str, Any]] = []
     unsupported: set[str] = set()
     for token in NUMBER.findall(answer):
         number = float(token)
         matches = [
-            source
-            for candidate, source in sources
-            if math.isclose(number, candidate, rel_tol=1e-6, abs_tol=1e-9)
+            source for candidate, source in sources if _matches(token, number, candidate)
         ]
         table.append({"number": token, "source": matches[0] if matches else None})
         if not matches:
             unsupported.add(token)
     if unsupported:
         safe_sentences = [
-            sentence for sentence in re.split(r"(?<=[.!?])\s+", answer)
+            sentence
+            for sentence in re.split(r"(?<=[.!?])\s+", answer)
             if not any(token in NUMBER.findall(sentence) for token in unsupported)
         ]
         answer = " ".join(safe_sentences).strip()
         if not answer:
             answer = "The available sources do not support a numeric answer."
     return answer, table
-
