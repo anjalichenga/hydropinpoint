@@ -5,7 +5,7 @@ No network, no real data.
 """
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 import pytest
 
@@ -19,7 +19,7 @@ from hydropinpoint.contracts import (
     ToolResult,
 )
 
-NOW = datetime.now(tz=UTC)
+NOW = datetime.now(tz=timezone.utc)
 
 
 # ---------------------------------------------------------------------------

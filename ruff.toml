@@ -20,6 +20,11 @@ ignore = [
     "RUF001",
     "RUF002",
     "RUF003",
+    # UP045: contracts.py uses Optional[T] from typing as specified in the canonical
+    # shared contract appendix; do not rewrite to T | None.
+    "UP045",
+    # UP017: allow timezone.utc for backwards compatibility across Python versions.
+    "UP017",
 ]
 
 [lint.per-file-ignores]

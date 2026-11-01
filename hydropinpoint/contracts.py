@@ -6,7 +6,7 @@ Units are stated in every field name or comment. Change this file only through a
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -28,7 +28,7 @@ class ToolResult(BaseModel):
     source: str                      # human-readable source name
     fetched_at: datetime             # UTC timestamp of the real fetch (or of the cached fetch)
     cached: bool = False             # True when served from a saved real response
-    error: str | None = None      # set when the call failed; value is then None
+    error: Optional[str] = None      # set when the call failed; value is then None
 
 
 class RainCell(BaseModel):
@@ -66,8 +66,8 @@ class DrainSizing(BaseModel):
     hotspot_id: int
     hourly_required_D_m: list[float]          # required full-flow circular pipe diameter, metres
     slope_floor_applied: bool                 # True when the minimum-slope floor set the size
-    mapped_drain_size_m: float | None = None   # from OSM width or diameter, if mapped
-    mapped_narrower_than_required: bool | None = None
+    mapped_drain_size_m: Optional[float] = None   # from OSM width or diameter, if mapped
+    mapped_narrower_than_required: Optional[bool] = None
     capacity_note: str = "existing capacity unknown"
 
 
