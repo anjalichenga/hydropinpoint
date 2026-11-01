@@ -95,3 +95,35 @@ UI_DEFAULT_BOX: dict = {
     "east": 77.70,
     "north": 13.00,
 }
+
+# --- PERSON B RUNTIME ---
+# Isolated aliases and source settings owned by Person B.
+import os
+from pathlib import Path
+from hydropinpoint.contracts import BoundingBox
+
+MANNING_N = MANNING_N_PIPE
+MIN_PIPE_SLOPE = SLOPE_FLOOR_M_PER_M
+CACHE_DIR = Path(os.getenv("HYDROPINPOINT_CACHE_DIR", ".cache"))
+HTTP_TIMEOUT_S = 30
+HTTP_RETRIES = 3
+USER_AGENT = "HydroPinpoint/0.1 ({email})"
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai").lower()
+LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4.1-mini")
+LLM_API_KEY = os.getenv("LLM_API_KEY") or os.getenv("OPENAI_API_KEY")
+MAX_VALIDATOR_ATTEMPTS = AGENT_MAX_RETRIES
+DEFAULT_BOX = BoundingBox(**UI_DEFAULT_BOX)
+TOP_HOTSPOTS = 3
+OSM_MATCH_RADIUS_M = 150.0
+OVERPASS_ENDPOINTS = (
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass.nchc.org.tw/api/interpreter",
+)
+NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
+PHOTON_URL = "https://photon.komoot.io/api/"
+OSRM_URL = "https://router.project-osrm.org/route/v1/driving"
+DATAMEET_WARDS_URL = (
+    "https://raw.githubusercontent.com/datameet/Municipal_Spatial_Data/master/"
+    "Bangalore/BBMP/BBMP_Wards.geojson"
+)

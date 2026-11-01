@@ -1,78 +1,147 @@
-"""pipeline.py – end-to-end run: terrain → runoff → drain sizing.
-
-Owner: Person B (calls A's compute_terrain / compute_runoff then B's size_drains).
-
-Public interface (as agreed in contracts.py):
-
-    run(box: BoundingBox) -> EngineResult
-
-CLI smoke check:
-    python -m hydropinpoint.pipeline --smoke
-    python -m hydropinpoint.pipeline --top 3
-
-Notes:
-    - Imports A's and B's modules lazily to keep CI import checks fast.
-    - On any source failure, adds a note to EngineResult.notes and continues
-      with degraded output rather than crashing (unless no DEM at all).
-"""
+"""End-to-end join between Person A's runoff engine and Person B's hydraulics."""
 from __future__ import annotations
 
 import argparse
-import sys
+import importlib
+import math
+from collections.abc import Callable
+from datetime import UTC, datetime
+from typing import Any
 
-from hydropinpoint.contracts import BoundingBox, EngineResult
+from hydropinpoint.config import DEFAULT_BOX, OSM_MATCH_RADIUS_M
+from hydropinpoint.contracts import BoundingBox, EngineResult, Hotspot, RainfallSeries
+from hydropinpoint.engine.hydraulics import size_drains
+from hydropinpoint.fetch.osm import fetch_osm
+
+
+class IntegrationUnavailableError(RuntimeError):
+    """Raised while Person A's required module has not landed yet."""
+
+
+def _function(module_name: str, names: tuple[str, ...]) -> Callable[..., Any]:
+    try:
+        module = importlib.import_module(module_name)
+    except ModuleNotFoundError as exc:
+        raise IntegrationUnavailableError(f"missing Person A module: {module_name}") from exc
+    for name in names:
+        function = getattr(module, name, None)
+        if callable(function):
+            return function
+    raise IntegrationUnavailableError(f"{module_name} must expose one of: {', '.join(names)}")
+
+
+def _live_rain(box: BoundingBox) -> RainfallSeries:
+    fetch = _function(
+        "hydropinpoint.fetch.rainfall",
+        ("fetch_rainfall", "fetch_forecast", "get_forecast"),
+    )
+    value = fetch(box)
+    if hasattr(value, "value"):
+        if value.error:
+            raise IntegrationUnavailableError(f"rainfall fetch failed: {value.error}")
+        value = value.value
+    return RainfallSeries.model_validate(value)
+
+
+def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    radius_m = 6_371_000.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp = math.radians(lat2 - lat1)
+    dl = math.radians(lon2 - lon1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * radius_m * math.asin(math.sqrt(a))
+
+
+def _match_mapped_drains(hotspots: list[Hotspot], sizings: list[Any], records: list[dict]) -> None:
+    drains = [
+        record for record in records
+        if record.get("kind") in {"drain", "culvert"} and record.get("mapped_size_m")
+    ]
+    hotspot_by_id = {hotspot.id: hotspot for hotspot in hotspots}
+    for sizing in sizings:
+        hotspot = hotspot_by_id[sizing.hotspot_id]
+        candidates = [
+            (record, _haversine_m(hotspot.lat, hotspot.lon, record["lat"], record["lon"]))
+            for record in drains
+        ]
+        candidates = [candidate for candidate in candidates if candidate[1] <= OSM_MATCH_RADIUS_M]
+        if not candidates:
+            continue
+        mapped = min(candidates, key=lambda candidate: candidate[1])[0]
+        sizing.mapped_drain_size_m = float(mapped["mapped_size_m"])
+        peak_required = max(sizing.hourly_required_D_m, default=0.0)
+        sizing.mapped_narrower_than_required = sizing.mapped_drain_size_m < peak_required
+        sizing.capacity_note = "mapped OSM width/diameter compared with required circular diameter"
+
+
+def _vintage(module_name: str, attribute: str) -> str:
+    try:
+        return str(getattr(importlib.import_module(module_name), attribute))
+    except (ModuleNotFoundError, AttributeError):
+        return "vintage unavailable from source module"
 
 
 def run(box: BoundingBox) -> EngineResult:
-    """Run the full HydroPinpoint pipeline for *box*."""
-    raise NotImplementedError("pipeline.run not yet implemented – Person B")
+    compute_terrain = _function("hydropinpoint.engine.hydrology", ("compute_terrain",))
+    compute_runoff = _function("hydropinpoint.engine.hydrology", ("compute_runoff",))
+    rain = _live_rain(box)
+    terrain = [Hotspot.model_validate(row) for row in compute_terrain(box)]
+    hotspots = [Hotspot.model_validate(row) for row in compute_runoff(terrain, rain)]
+    sizings = size_drains(hotspots)
+    notes: list[str] = []
+
+    osm = fetch_osm(box)
+    if osm.value is not None:
+        _match_mapped_drains(hotspots, sizings, osm.value)
+    if osm.error:
+        notes.append(osm.error)
+    if osm.cached:
+        notes.append(f"OSM data served from cache; fetched at {osm.fetched_at.isoformat()}")
+
+    return EngineResult(
+        box=box,
+        hotspots=hotspots,
+        sizings=sizings,
+        rainfall=rain,
+        dem_vintage=_vintage("hydropinpoint.fetch.dem", "DEM_VINTAGE"),
+        landcover_vintage=_vintage("hydropinpoint.fetch.landcover", "LANDCOVER_VINTAGE"),
+        notes=notes,
+        generated_at=datetime.now(UTC),
+    )
 
 
-def _smoke(box: BoundingBox | None = None) -> None:
-    """Quick smoke check: run the pipeline on a small default box."""
-    from hydropinpoint.config import UI_DEFAULT_BOX
-    b = box or BoundingBox(**UI_DEFAULT_BOX)
-    print(f"[smoke] Running pipeline on {b} …")
-    result = run(b)
-    print(f"[smoke] OK: {len(result.hotspots)} hotspots, {len(result.sizings)} sizings")
-    print(f"[smoke] Notes: {result.notes}")
-    for h in result.hotspots[:3]:
-        print(f"  hotspot {h.id}: lat={h.lat:.4f} lon={h.lon:.4f} "
-              f"Q_peak={max(h.hourly_Q_m3s, default=0):.4f} m³/s "
-              f"rank={h.susceptibility_rank}")
+def _print_top(result: EngineResult, count: int) -> None:
+    sizing_by_id = {sizing.hotspot_id: sizing for sizing in result.sizings}
+    ranked = sorted(result.hotspots, key=lambda hotspot: hotspot.susceptibility_rank)[:count]
+    for hotspot in ranked:
+        sizing = sizing_by_id[hotspot.id]
+        print(
+            f"#{hotspot.susceptibility_rank} hotspot={hotspot.id} "
+            f"peak_Q_m3s={max(hotspot.hourly_Q_m3s, default=0):.4f} "
+            f"required_D_m={max(sizing.hourly_required_D_m, default=0):.3f} "
+            f"rain_source={result.rainfall.source} "
+            f"fetched_at={result.rainfall.fetched_at.isoformat()}"
+        )
 
 
-def _top(n: int, box: BoundingBox | None = None) -> None:
-    from hydropinpoint.config import UI_DEFAULT_BOX
-    b = box or BoundingBox(**UI_DEFAULT_BOX)
-    result = run(b)
-    print(f"Top {n} hotspots  |  dem: {result.dem_vintage}  |  lc: {result.landcover_vintage}")
-    print(f"Rainfall source: {result.rainfall.source}  fetched_at: {result.rainfall.fetched_at}")
-    for h in result.hotspots[:n]:
-        peak_q = max(h.hourly_Q_m3s, default=0.0)
-        ds = next((s for s in result.sizings if s.hotspot_id == h.id), None)
-        peak_d = max(ds.hourly_required_D_m, default=0.0) if ds else float("nan")
-        print(f"  rank={h.susceptibility_rank:3d} id={h.id:4d} "
-              f"lat={h.lat:.4f} lon={h.lon:.4f} "
-              f"depth={h.depression_depth_m:.2f}m "
-              f"area={h.catchment_area_km2:.4f}km² "
-              f"C={h.runoff_coeff_C:.2f} "
-              f"Q_peak={peak_q:.4f}m³/s "
-              f"D_req={peak_d:.3f}m")
-    if result.notes:
-        print("Notes:", result.notes)
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--smoke", action="store_true")
+    parser.add_argument("--top", type=int, default=0)
+    args = parser.parse_args()
+    try:
+        result = run(DEFAULT_BOX)
+    except IntegrationUnavailableError as exc:
+        print(f"pipeline unavailable until Person A's modules land: {exc}")
+        return 2
+    if args.smoke:
+        EngineResult.model_validate(result.model_dump())
+        print(f"smoke: ok ({len(result.hotspots)} real hotspots)")
+    if args.top:
+        _print_top(result, args.top)
+    return 0
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="HydroPinpoint pipeline")
-    parser.add_argument("--smoke", action="store_true", help="Quick smoke check")
-    parser.add_argument("--top", type=int, metavar="N", help="Print top N hotspots")
-    args = parser.parse_args()
+    raise SystemExit(main())
 
-    if args.smoke:
-        _smoke()
-    elif args.top:
-        _top(args.top)
-    else:
-        parser.print_help()
-        sys.exit(1)
