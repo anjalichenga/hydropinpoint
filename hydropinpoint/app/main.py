@@ -31,8 +31,9 @@ def _live_page() -> None:
     result = _load()
     if result is None:
         return
-    if result.notes:
-        st.warning("Degraded mode: " + "; ".join(result.notes))
+    critical_notes = [note for note in result.notes if "OSM drainage lookup" not in note]
+    if critical_notes:
+        st.warning("Degraded mode: " + "; ".join(critical_notes))
     peak_rain = max(
         (value for cell in result.rainfall.cells for value in cell.mm_per_h),
         default=0.0,

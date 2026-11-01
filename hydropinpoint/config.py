@@ -94,7 +94,7 @@ AGENT_TIMEOUT_S: int = 30
 # --- UI ---
 # Streamlit page settings for B's app.
 UI_PAGE_TITLE: str = "HydroPinpoint"
-UI_MAP_TILES: str = "CartoDB positron"
+UI_MAP_TILES: str = "OpenStreetMap"
 UI_DEFAULT_BOX: dict = {
     # Approximate 10 × 10 km window centred on eastern Bengaluru flood-reported area.
     # ASSUMPTION: chosen from memory around 12.95 N, 77.65 E; must be verified
@@ -121,10 +121,15 @@ MAX_VALIDATOR_ATTEMPTS = AGENT_MAX_RETRIES
 DEFAULT_BOX = BoundingBox(**UI_DEFAULT_BOX)
 TOP_HOTSPOTS = 3
 OSM_MATCH_RADIUS_M = 150.0
-OVERPASS_ENDPOINTS = (
-    "https://overpass-api.de/api/interpreter",
-    "https://overpass.kumi.systems/api/interpreter",
-    "https://overpass.private.coffee/api/interpreter",
+OVERPASS_ENDPOINTS = tuple(
+    endpoint
+    for endpoint in (
+        os.getenv("OVERPASS_API_URL"),
+        "https://overpass-api.de/api/interpreter",
+        "https://overpass.kumi.systems/api/interpreter",
+        "https://overpass.private.coffee/api/interpreter",
+    )
+    if endpoint
 )
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 PHOTON_URL = "https://photon.komoot.io/api/"
