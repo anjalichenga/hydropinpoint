@@ -1,7 +1,7 @@
 .PHONY: lint test contracts smoke check
 
 lint:
-	ruff check hydropinpoint tests
+	ruff check hydropinpoint tests app
 
 test:
 	pytest -m "not network" tests/
