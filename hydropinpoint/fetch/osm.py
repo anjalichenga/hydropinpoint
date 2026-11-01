@@ -1,6 +1,7 @@
 """OpenStreetMap/Overpass fetcher for drainage and critical facilities."""
 from __future__ import annotations
 
+import os
 import re
 from datetime import UTC, datetime
 from typing import Any
@@ -86,15 +87,22 @@ def fetch_osm(box: BoundingBox) -> ToolResult:
     query = _query(box)
     key = make_cache_key("osm", box.model_dump())
     errors: list[str] = []
+    email = os.getenv("CONTACT_EMAIL", "contact-not-configured")
+    headers = {
+        "User-Agent": f"HydroPinpoint/0.1 ({email})",
+        "Accept": "application/json",
+    }
     for endpoint in OVERPASS_ENDPOINTS:
         result = request_json(
             url=endpoint,
             source=f"OpenStreetMap via {endpoint}",
             namespace="overpass",
-            data={"data": query},
-            method="POST",
+            params={"data": query},
+            headers=headers,
             cache_key=key,
             allow_cache_on_error=False,
+            retries=1,
+            timeout_s=6,
         )
         if result.error is None:
             value = _normalise(result.value.get("elements", []))
@@ -104,12 +112,12 @@ def fetch_osm(box: BoundingBox) -> ToolResult:
         errors.append(f"{endpoint}: {result.error}")
     cached = load_real_response(key)
     if cached is not None:
-        cached.error = "all Overpass servers failed; using saved real response"
+        cached.error = "Live OSM lookup failed; using a saved real response."
         return cached
     return ToolResult(
         value=None,
         source="OpenStreetMap Overpass",
         fetched_at=datetime.now(UTC),
-        error=" | ".join(errors),
+        error="OSM drainage lookup is temporarily unavailable; existing capacity is unknown.",
     )
 

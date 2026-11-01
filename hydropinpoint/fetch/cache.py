@@ -83,15 +83,18 @@ def request_json(
     cache_key: str | None = None,
     rate_limit_s: float = 0.0,
     allow_cache_on_error: bool = True,
+    retries: int | None = None,
+    timeout_s: float = HTTP_TIMEOUT_S,
 ) -> ToolResult:
     key = cache_key or make_cache_key(namespace, {"params": params, "data": data})
     errors: list[str] = []
-    for attempt in range(HTTP_RETRIES):
+    attempts = retries if retries is not None else HTTP_RETRIES
+    for attempt in range(attempts):
         try:
             _rate_limit(namespace, rate_limit_s)
             response = requests.request(
                 method, url, params=params, data=data, headers=headers,
-                timeout=HTTP_TIMEOUT_S,
+                timeout=timeout_s,
             )
             response.raise_for_status()
             value = response.json()
@@ -100,7 +103,7 @@ def request_json(
             return ToolResult(value=value, source=source, fetched_at=fetched_at)
         except (requests.RequestException, ValueError) as exc:
             errors.append(f"attempt {attempt + 1}: {exc}")
-            if attempt + 1 < HTTP_RETRIES:
+            if attempt + 1 < attempts:
                 time.sleep(2**attempt)
 
     if allow_cache_on_error:
