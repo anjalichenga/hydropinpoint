@@ -20,6 +20,20 @@ from hydropinpoint.contracts import BoundingBox
 
 load_dotenv()
 
+
+def _setting(name: str, default: str | None = None) -> str | None:
+    """Read local environment first, then Streamlit Cloud root-level secrets."""
+    value = os.getenv(name)
+    if value:
+        return value
+    try:
+        import streamlit as st
+
+        secret = st.secrets.get(name)
+        return str(secret) if secret not in (None, "") else default
+    except (FileNotFoundError, KeyError, RuntimeError):
+        return default
+
 # --- HYDROLOGY ---
 # Runoff coefficients C by WorldCover class.
 # Source: Chow, Maidment & Mays "Applied Hydrology" Table 5.2.1 (1988).
@@ -88,8 +102,8 @@ STANDARD_PIPE_DIAMETERS_M: list[float] = [
 # --- AGENT ---
 # LLM and tool settings for B's LangGraph agent.
 # Values are read from environment; defaults here are safe non-functional stubs.
-AGENT_MAX_RETRIES: int = 3
-AGENT_TIMEOUT_S: int = 30
+AGENT_MAX_RETRIES: int = 1
+AGENT_TIMEOUT_S: int = 20
 
 # --- UI ---
 # Streamlit page settings for B's app.
@@ -113,12 +127,13 @@ CACHE_DIR = Path(os.getenv("HYDROPINPOINT_CACHE_DIR", ".cache"))
 HTTP_TIMEOUT_S = 30
 HTTP_RETRIES = 3
 USER_AGENT = "HydroPinpoint/0.1 ({email})"
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini").lower()
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
-GEMINI_FALLBACK_MODEL = os.getenv(
-    "GEMINI_FALLBACK_MODEL", "gemini-2.5-flash-lite"
+LLM_PROVIDER = (_setting("LLM_PROVIDER", "gemini") or "gemini").lower()
+GEMINI_MODEL = _setting("GEMINI_MODEL", "gemini-2.5-flash-lite") or "gemini-2.5-flash-lite"
+GEMINI_FALLBACK_MODEL = (
+    _setting("GEMINI_FALLBACK_MODEL", "gemini-2.0-flash-lite")
+    or "gemini-2.0-flash-lite"
 )
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_API_KEY = _setting("GEMINI_API_KEY")
 MAX_VALIDATOR_ATTEMPTS = AGENT_MAX_RETRIES
 DEFAULT_BOX = BoundingBox(**UI_DEFAULT_BOX)
 TOP_HOTSPOTS = 3

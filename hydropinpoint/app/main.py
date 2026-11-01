@@ -7,13 +7,13 @@ from streamlit_folium import st_folium
 
 from hydropinpoint.agent.graph import ask
 from hydropinpoint.config import DEFAULT_BOX, UI_MAP_TILES, UI_PAGE_TITLE
-from hydropinpoint.pipeline import run
+from hydropinpoint.pipeline import run_cached
 from hydropinpoint.tools.replay import replay
 
 
 @st.cache_resource(ttl=900, show_spinner=False)
 def _engine_result():
-    return run(DEFAULT_BOX)
+    return run_cached(DEFAULT_BOX)
 
 
 def _load():
@@ -94,11 +94,20 @@ def _live_page() -> None:
 
 def _ask_page() -> None:
     st.header("Ask HydroPinpoint")
+    st.caption("General questions are instant; live hotspot questions reuse a 15-minute cache.")
+    if "chat_messages" not in st.session_state:
+        st.session_state.chat_messages = []
+    for message in st.session_state.chat_messages:
+        st.chat_message(message["role"]).write(message["content"])
     question = st.chat_input("Ask about hotspots, wards, facilities, routes, or a mm/h scenario")
     if question:
-        with st.status("Running tools and validating sources...", expanded=True):
+        st.session_state.chat_messages.append({"role": "user", "content": question})
+        st.chat_message("user").write(question)
+        with st.status("Answering...", expanded=False):
             state = ask(question)
-            st.write(f"Status: {state['status']}; validation attempts: {state['attempts']}")
+        st.session_state.chat_messages.append(
+            {"role": "assistant", "content": state["answer"]}
+        )
         st.chat_message("assistant").write(state["answer"])
         citation_rows = _citation_rows(state.get("citations", []))
         if citation_rows:

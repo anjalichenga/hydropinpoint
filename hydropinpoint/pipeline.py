@@ -4,8 +4,11 @@ from __future__ import annotations
 import argparse
 import importlib
 import math
+import time
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
+from functools import lru_cache
 from typing import Any
 
 from hydropinpoint.config import DEFAULT_BOX, OSM_MATCH_RADIUS_M
@@ -84,13 +87,17 @@ def _vintage(module_name: str, attribute: str) -> str:
 def run(box: BoundingBox) -> EngineResult:
     compute_terrain = _function("hydropinpoint.engine.hydrology", ("compute_terrain",))
     compute_runoff = _function("hydropinpoint.engine.hydrology", ("compute_runoff",))
-    rain = _live_rain(box)
-    terrain = [Hotspot.model_validate(row) for row in compute_terrain(box)]
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        rain_future = pool.submit(_live_rain, box)
+        terrain_future = pool.submit(compute_terrain, box)
+        osm_future = pool.submit(fetch_osm, box)
+        rain = rain_future.result()
+        terrain = [Hotspot.model_validate(row) for row in terrain_future.result()]
+        osm = osm_future.result()
     hotspots = [Hotspot.model_validate(row) for row in compute_runoff(terrain, rain)]
     sizings = size_drains(hotspots)
     notes: list[str] = []
 
-    osm = fetch_osm(box)
     if osm.value is not None:
         _match_mapped_drains(hotspots, sizings, osm.value)
     if osm.error:
@@ -108,6 +115,24 @@ def run(box: BoundingBox) -> EngineResult:
         notes=notes,
         generated_at=datetime.now(UTC),
     )
+
+
+@lru_cache(maxsize=4)
+def _run_cached(
+    west: float,
+    south: float,
+    east: float,
+    north: float,
+    time_bucket: int,
+) -> EngineResult:
+    del time_bucket
+    return run(BoundingBox(west=west, south=south, east=east, north=north))
+
+
+def run_cached(box: BoundingBox = DEFAULT_BOX) -> EngineResult:
+    """Reuse a pipeline result for 15 minutes across UI pages and agent questions."""
+    time_bucket = int(time.time() // 900)
+    return _run_cached(box.west, box.south, box.east, box.north, time_bucket)
 
 
 def _print_top(result: EngineResult, count: int) -> None:

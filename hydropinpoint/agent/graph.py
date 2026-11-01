@@ -8,14 +8,17 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, TypedDict
 
 from hydropinpoint.config import (
+    AGENT_TIMEOUT_S,
     GEMINI_API_KEY,
     GEMINI_FALLBACK_MODEL,
     GEMINI_MODEL,
     MAX_VALIDATOR_ATTEMPTS,
 )
 from hydropinpoint.contracts import ToolResult
+from hydropinpoint.tools.about import about
 from hydropinpoint.tools.facilities import facilities
 from hydropinpoint.tools.hotspots import hotspots
+from hydropinpoint.tools.replay import replay
 from hydropinpoint.tools.route import shelter_to_hospital
 from hydropinpoint.tools.scenario import scenario_rainfall
 from hydropinpoint.tools.wards import wards
@@ -36,23 +39,66 @@ class AgentState(TypedDict, total=False):
 def planner(state: AgentState) -> AgentState:
     question = state["question"].lower()
     tasks: list[dict[str, Any]] = []
+    explanatory = any(
+        phrase in question
+        for phrase in (
+            "what is hydropinpoint",
+            "how does",
+            "how do you",
+            "explain",
+            "methodology",
+            "architecture",
+            "limitation",
+            "accuracy",
+            "reliable",
+            "data source",
+        )
+    )
+    requests_ranked_data = any(
+        word in question for word in ("show", "list", "top", "current", "today", "which", "where")
+    )
+    if explanatory and not requests_ranked_data:
+        return {
+            **state,
+            "tasks": [{"name": "about"}],
+            "attempts": state.get("attempts", 0),
+            "status": "planned",
+        }
     scenario = re.search(r"(\d+(?:\.\d+)?)\s*mm\s*/?\s*h", question)
     if scenario:
         tasks.append({"name": "scenario", "mm_per_h": float(scenario.group(1))})
+    if any(word in question for word in ("replay", "historical", "2022")):
+        tasks.append({"name": "replay"})
     if any(word in question for word in ("ward", "pump")):
-        tasks.extend(({"name": "hotspots"}, {"name": "wards"}))
-    if any(word in question for word in ("hospital", "shelter", "route")):
-        tasks.extend(({"name": "hotspots", "top": 3}, {"name": "facilities"}))
+        tasks.extend(({"name": "hotspots", "top": 5}, {"name": "wards"}))
     if "route" in question or ("hospital" in question and "shelter" in question):
         tasks.append({"name": "route"})
+    elif any(word in question for word in ("hospital", "shelter", "facility")):
+        tasks.append({"name": "facilities"})
+    hotspot_terms = (
+        "hotspot",
+        "flood risk",
+        "vulnerable",
+        "runoff",
+        "drain",
+        "diameter",
+        "catchment",
+        "current rainfall",
+        "live rainfall",
+        "top area",
+    )
+    if any(term in question for term in hotspot_terms):
+        tasks.append({"name": "hotspots", "top": 5})
     if not tasks:
-        tasks.append({"name": "hotspots", "top": 3})
+        tasks.append({"name": "about"})
     unique = list({json.dumps(task, sort_keys=True): task for task in tasks}.values())
     return {**state, "tasks": unique, "attempts": state.get("attempts", 0), "status": "planned"}
 
 
 def _execute(task: dict[str, Any]) -> ToolResult:
     name = task["name"]
+    if name == "about":
+        return about()
     if name == "hotspots":
         return hotspots(top=task.get("top"))
     if name == "wards":
@@ -63,6 +109,8 @@ def _execute(task: dict[str, Any]) -> ToolResult:
         return shelter_to_hospital()
     if name == "scenario":
         return scenario_rainfall(task["mm_per_h"])
+    if name == "replay":
+        return replay()
     raise ValueError(f"unknown tool: {name}")
 
 
@@ -94,15 +142,113 @@ def _retry_or_reason(state: AgentState) -> str:
     return "reason"
 
 
-def _source_based_answer(results: list[ToolResult]) -> str:
-    sources = "; ".join(
-        f"{result.source} (fetched {result.fetched_at.isoformat()})" for result in results
+def _source_based_answer(question: str, results: list[ToolResult]) -> str:
+    lowered = question.lower()
+    documentation = next(
+        (
+            result.value
+            for result in results
+            if result.source == "HydroPinpoint project documentation"
+        ),
+        None,
     )
-    return (
-        "The requested screening data is available in the structured result. "
-        f"Sources: {sources}. Existing drain capacity remains unknown unless a mapped "
-        "size is shown."
+    if isinstance(documentation, dict):
+        if any(word in lowered for word in ("limitation", "reliable", "accuracy")):
+            limitations = " ".join(documentation["limitations"])
+            replay_result = documentation["historical_replay"]
+            return (
+                f"{limitations} In the historical replay, the hit rate was "
+                f"{replay_result['model_hit_rate_percent']}% compared with a "
+                f"{replay_result['random_baseline_percent']}% random baseline."
+            )
+        if any(word in lowered for word in ("how", "method", "workflow", "work")):
+            return "HydroPinpoint works in five stages: " + "; ".join(
+                documentation["workflow"]
+            )
+        return f"{documentation['purpose']} {documentation['agent']}"
+
+    hotspot_result = next(
+        (
+            result
+            for result in results
+            if result.source.startswith("HydroPinpoint pipeline")
+            and isinstance(result.value, list)
+        ),
+        None,
     )
+    if hotspot_result is not None:
+        rows = [
+            "| Priority | Hotspot | Peak runoff (m³/s) | Required drain (m) | Capacity |",
+            "|---:|---:|---:|---:|---|",
+        ]
+        for item in hotspot_result.value:
+            sizing = item["drain_sizing"]
+            rows.append(
+                f"| {item['susceptibility_rank']} | {item['id']} | "
+                f"{item['peak_Q_m3s']} | {sizing['peak_required_D_m']} | "
+                f"{sizing['capacity_note']} |"
+            )
+        return "Here are the highest-priority screening results:\n\n" + "\n".join(rows)
+
+    scenario_result = next(
+        (result for result in results if "design-storm scenario" in result.source.lower()),
+        None,
+    )
+    if scenario_result is not None and isinstance(scenario_result.value, dict):
+        intensity = scenario_result.value["cells"][0]["mm_per_h"][0]
+        return (
+            f"This is a SCENARIO using {intensity} mm/h rainfall. It is a user-entered "
+            "design assumption, not a live forecast."
+        )
+
+    replay_result = next(
+        (
+            result
+            for result in results
+            if isinstance(result.value, dict) and "report" in result.value
+        ),
+        None,
+    )
+    if replay_result is not None:
+        return str(replay_result.value["report"])
+
+    route_result = next(
+        (
+            result.value
+            for result in results
+            if isinstance(result.value, dict) and "route" in result.value
+        ),
+        None,
+    )
+    if isinstance(route_result, dict):
+        route_data = route_result["route"]
+        return (
+            f"The route connects {route_result['shelter']['name']} to "
+            f"{route_result['hospital']['name']}. Distance: "
+            f"{route_data['distance_m']} m. Duration: {route_data['duration_s']} seconds."
+        )
+
+    facility_result = next(
+        (
+            result.value
+            for result in results
+            if isinstance(result.value, list)
+            and result.value
+            and isinstance(result.value[0], dict)
+            and "kind" in result.value[0]
+        ),
+        None,
+    )
+    if isinstance(facility_result, list):
+        rows = ["| Facility | Type | Latitude | Longitude |", "|---|---|---:|---:|"]
+        for item in facility_result[:8]:
+            rows.append(
+                f"| {item['name']} | {item['kind']} | {item['lat']} | {item['lon']} |"
+            )
+        return "Here are the mapped facilities available from OSM:\n\n" + "\n".join(rows)
+
+    sources = "; ".join(result.source for result in results)
+    return f"I could not produce a detailed answer, but the available sources were: {sources}."
 
 
 def reasoner(state: AgentState) -> AgentState:
@@ -112,6 +258,7 @@ def reasoner(state: AgentState) -> AgentState:
         draft = "Data unavailable. " + "; ".join(state.get("issues", []))
     elif GEMINI_API_KEY:
         from google import genai
+        from google.genai import types
 
         prompt = (
             "You are HydroPinpoint, a screening assistant, not a flood predictor. "
@@ -129,8 +276,13 @@ def reasoner(state: AgentState) -> AgentState:
             + "\nTool outputs: "
             + json.dumps(context, ensure_ascii=False)
         )
-        client = genai.Client(api_key=GEMINI_API_KEY)
-        models = tuple(dict.fromkeys((GEMINI_MODEL, GEMINI_FALLBACK_MODEL)))
+        client = genai.Client(
+            api_key=GEMINI_API_KEY,
+            http_options=types.HttpOptions(timeout=AGENT_TIMEOUT_S * 1000),
+        )
+        models = tuple(
+            dict.fromkeys(("gemini-2.5-flash-lite", GEMINI_MODEL, GEMINI_FALLBACK_MODEL))
+        )
         draft = ""
         for model in models:
             try:
@@ -141,9 +293,9 @@ def reasoner(state: AgentState) -> AgentState:
             if draft.strip():
                 break
         if not draft.strip():
-            draft = _source_based_answer(usable)
+            draft = _source_based_answer(state["question"], usable)
     else:
-        draft = _source_based_answer(usable)
+        draft = _source_based_answer(state["question"], usable)
     return {**state, "draft": draft, "status": "reasoned"}
 
 

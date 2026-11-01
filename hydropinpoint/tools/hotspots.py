@@ -5,12 +5,12 @@ from datetime import UTC, datetime
 
 from hydropinpoint.config import DEFAULT_BOX
 from hydropinpoint.contracts import BoundingBox, ToolResult
-from hydropinpoint.pipeline import IntegrationUnavailableError, run
+from hydropinpoint.pipeline import IntegrationUnavailableError, run_cached
 
 
 def hotspots(box: BoundingBox = DEFAULT_BOX, top: int | None = None) -> ToolResult:
     try:
-        result = run(box)
+        result = run_cached(box)
     except IntegrationUnavailableError as exc:
         return ToolResult(
             value=None,
@@ -22,13 +22,15 @@ def hotspots(box: BoundingBox = DEFAULT_BOX, top: int | None = None) -> ToolResu
     if top is not None:
         ranked = ranked[:top]
     sizings = {row.hotspot_id: row for row in result.sizings}
-    value = [
-        {
-            **row.model_dump(mode="json"),
-            "drain_sizing": sizings[row.id].model_dump(mode="json"),
-        }
-        for row in ranked
-    ]
+    value = []
+    for row in ranked:
+        hotspot = row.model_dump(mode="json")
+        hotspot["peak_Q_m3s"] = max(hotspot.pop("hourly_Q_m3s"), default=0.0)
+        sizing = sizings[row.id].model_dump(mode="json")
+        sizing["peak_required_D_m"] = max(
+            sizing.pop("hourly_required_D_m"), default=0.0
+        )
+        value.append({**hotspot, "drain_sizing": sizing})
     return ToolResult(
         value=value,
         source=f"HydroPinpoint pipeline; rainfall: {result.rainfall.source}",

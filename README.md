@@ -134,8 +134,8 @@ CONTACT_EMAIL=your-real-email@example.com
 
 LLM_PROVIDER=gemini
 GEMINI_API_KEY=your-gemini-api-key
-GEMINI_MODEL=gemini-3.5-flash-lite
-GEMINI_FALLBACK_MODEL=gemini-2.5-flash-lite
+GEMINI_MODEL=gemini-2.5-flash-lite
+GEMINI_FALLBACK_MODEL=gemini-2.0-flash-lite
 
 HYDROPINPOINT_CACHE_DIR=.cache
 
@@ -198,8 +198,8 @@ Example Streamlit secrets:
 ```toml
 CONTACT_EMAIL = "your-real-email@example.com"
 GEMINI_API_KEY = "your-gemini-api-key"
-GEMINI_MODEL = "gemini-3.5-flash-lite"
-GEMINI_FALLBACK_MODEL = "gemini-2.5-flash-lite"
+GEMINI_MODEL = "gemini-2.5-flash-lite"
+GEMINI_FALLBACK_MODEL = "gemini-2.0-flash-lite"
 ```
 
 ## Project structure
