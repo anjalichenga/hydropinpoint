@@ -5,7 +5,7 @@ combines open terrain, land-cover and rainfall data to identify low-lying
 micro-catchments, estimate runoff and required drain diameter, and answer questions
 through a source-aware LangGraph and Gemini assistant.
 
-> **Live demo:** [Add the deployed Streamlit URL here](https://YOUR-APP-NAME.streamlit.app)
+> **Live demo:** [hydropinpoint.streamlit.app](https://hydropinpoint.streamlit.app/)
 
 > **Safety note:** HydroPinpoint is a planning and screening aid. It is not an
 > operational flood forecast, emergency-warning system or drainage-capacity model.
