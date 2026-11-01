@@ -14,7 +14,11 @@ Blocks:
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 from hydropinpoint.contracts import BoundingBox
+
+load_dotenv()
 
 # --- HYDROLOGY ---
 # Runoff coefficients C by WorldCover class.
